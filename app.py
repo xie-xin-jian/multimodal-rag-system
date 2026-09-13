@@ -3,23 +3,33 @@
 用 Flask 暴露 REST API，前端单页 HTML 负责聊天交互。
 启动：python app.py  →  http://127.0.0.1:5000
 """
+
 from __future__ import annotations
 
 import os
-import re
-import uuid
+from pathlib import Path
 
 os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 
 from flask import Flask, request, jsonify, render_template
 
 from main import MiniRAGSystem
+from rag_utils import (
+    display_filename,
+    resolve_within,
+    safe_upload_filename,
+    sha256_file,
+)
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50MB
 
 # 全局 RAG 系统实例（启动时加载一次）
-rag = MiniRAGSystem()
+rag = MiniRAGSystem(
+    embed_model=os.environ.get("RAG_EMBED_MODEL", "nomic-embed-text"),
+    llm_model=os.environ.get("RAG_LLM_MODEL", "qwen2.5"),
+    persist_directory=os.environ.get("RAG_PERSIST_DIR", "chroma_db"),
+)
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -31,12 +41,16 @@ def _allowed_file(filename: str) -> bool:
     return os.path.splitext(filename)[1].lower() in ALLOWED_EXT
 
 
-def _safe_filename(filename: str) -> str:
-    """清理文件名但保留中文。"""
-    name = filename.replace("/", "_").replace("\\", "_").replace("\0", "")
-    name = re.sub(r"\s+", " ", name)
-    name = re.sub(r"\.{2,}", ".", name)
-    return name.strip(" .")
+def _resolve_data_file(filename: str) -> Path:
+    return resolve_within(DATA_DIR, filename)
+
+
+@app.after_request
+def add_security_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return response
 
 
 @app.route("/")
@@ -46,21 +60,18 @@ def index():
 
 @app.route("/api/status")
 def status():
-    chunk_count = len(rag.retriever._all_chunks) if rag._loaded else 0
-    # 统计不重复的源文件
-    sources_set = set()
-    for chunk in rag.retriever._all_chunks:
-        src = chunk.metadata.get("source", "")
-        if src:
-            sources_set.add(os.path.basename(src))
+    chunk_count = rag.retriever.chunk_count if rag._loaded else 0
+    sources_set = set(rag.retriever.document_names) if rag._loaded else set()
 
-    return jsonify({
-        "loaded": rag._loaded,
-        "chunk_count": chunk_count,
-        "documents": sorted(sources_set),
-        "embed_model": "nomic-embed-text",
-        "llm_model": "qwen2.5",
-    })
+    return jsonify(
+        {
+            "loaded": rag._loaded,
+            "chunk_count": chunk_count,
+            "documents": sorted(sources_set),
+            "embed_model": rag.embed_model,
+            "llm_model": rag.llm_model,
+        }
+    )
 
 
 @app.route("/api/ask", methods=["POST"])
@@ -92,6 +103,10 @@ def ingest():
 
     files = request.files.getlist("files")
     saved_paths = []
+    document_names = []
+    created_paths = []
+    replaced_paths = set()
+    batch_names = set()
 
     for f in files:
         if not f or not f.filename:
@@ -99,29 +114,54 @@ def ingest():
         if not _allowed_file(f.filename):
             continue
 
-        # 保留中文，只做安全清理（替换路径分隔符、去掉空字符）
-        stem, ext = os.path.splitext(f.filename)
-        safe_stem = _safe_filename(stem) or "document"
+        safe_name = safe_upload_filename(f.filename)
+        stem, ext = os.path.splitext(safe_name)
+        safe_stem = stem or "document"
         safe_name = f"{safe_stem}{ext.lower()}"
-        unique_name = f"{uuid.uuid4().hex[:8]}_{safe_name}"
+        if safe_name in batch_names:
+            for created_path in created_paths:
+                if os.path.exists(created_path):
+                    os.remove(created_path)
+            return jsonify({"error": f"duplicate filename: {safe_name}"}), 400
+        batch_names.add(safe_name)
+
+        digest = sha256_file(f.stream)
+        unique_name = f"{digest[:16]}_{safe_name}"
         save_path = os.path.join(DATA_DIR, unique_name)
-        f.save(save_path)
+        if not os.path.exists(save_path):
+            f.save(save_path)
+            created_paths.append(save_path)
         saved_paths.append(save_path)
+        document_name = safe_name
+        document_names.append(document_name)
+
+        for existing in os.listdir(DATA_DIR):
+            existing_path = os.path.join(DATA_DIR, existing)
+            if (
+                os.path.isfile(existing_path)
+                and existing_path != save_path
+                and display_filename(existing) == document_name
+            ):
+                replaced_paths.add(existing_path)
 
     if not saved_paths:
         return jsonify({"error": "no valid files (supported: PDF, MD, TXT, DOCX)"}), 400
 
     try:
         if rag._loaded:
-            rag.add_documents(saved_paths)
+            rag.add_documents(saved_paths, document_names=document_names)
         else:
-            rag.ingest_knowledge(saved_paths)
-        display_names = []
-        for p in saved_paths:
-            bn = os.path.basename(p)
-            display_names.append(bn[9:] if len(bn) >= 9 and bn[8] == "_" else bn)
-        return jsonify({"success": True, "files": display_names})
+            rag.ingest_knowledge(saved_paths, document_names=document_names)
+
+        for old_path in replaced_paths:
+            if os.path.exists(old_path):
+                os.remove(old_path)
+
+        return jsonify({"success": True, "files": document_names})
     except Exception as e:
+        for created_path in created_paths:
+            if os.path.exists(created_path):
+                os.remove(created_path)
         return jsonify({"error": str(e)}), 500
 
 
@@ -131,14 +171,13 @@ def documents():
     docs = []
     for f in os.listdir(DATA_DIR):
         if os.path.splitext(f)[1].lower() in ALLOWED_EXT:
-            display_name = f
-            if len(f) >= 9 and f[8] == "_":
-                display_name = f[9:]
-            docs.append({
-                "name": display_name,
-                "file": f,
-                "size": os.path.getsize(os.path.join(DATA_DIR, f)),
-            })
+            docs.append(
+                {
+                    "name": display_filename(f),
+                    "file": f,
+                    "size": os.path.getsize(os.path.join(DATA_DIR, f)),
+                }
+            )
     docs.sort(key=lambda x: x["name"])
     return jsonify(docs)
 
@@ -151,17 +190,20 @@ def delete_document():
     if not filename:
         return jsonify({"error": "missing 'file' parameter"}), 400
 
-    # 解析完整文件名（带 UUID 前缀）
-    # documents 接口返回的 "file" 字段就是实际文件名
-    actual_file = filename
-    if not os.path.exists(os.path.join(DATA_DIR, actual_file)):
-        # 可能只传了显示名，尝试匹配完整文件名
-        for f in os.listdir(DATA_DIR):
-            if os.path.splitext(f)[1].lower() in ALLOWED_EXT:
-                display = f[9:] if len(f) >= 9 and f[8] == "_" else f
-                if display == filename:
-                    actual_file = f
-                    break
+    try:
+        candidate = _resolve_data_file(filename)
+    except ValueError:
+        return jsonify({"error": "invalid filename"}), 400
+
+    actual_file = candidate.name if candidate.exists() else ""
+    if not actual_file:
+        for current in os.listdir(DATA_DIR):
+            if display_filename(current) == filename:
+                actual_file = current
+                break
+
+    if not actual_file:
+        return jsonify({"error": "document not found"}), 404
 
     try:
         removed = rag.remove_document(actual_file)
@@ -171,10 +213,12 @@ def delete_document():
 
 
 if __name__ == "__main__":
+    host = os.environ.get("RAG_HOST", "127.0.0.1")
+    port = int(os.environ.get("RAG_PORT", "5000"))
     print(f"\n{'=' * 50}")
     print("  多模态RAG知识库问答系统 Web UI")
     print(f"  知识库状态: {'已加载' if rag._loaded else '空'}")
-    print(f"  Chunk 数量: {len(rag.retriever._all_chunks)}")
-    print(f"  访问地址: http://127.0.0.1:5000")
+    print(f"  Chunk 数量: {rag.retriever.chunk_count}")
+    print(f"  访问地址: http://{host}:{port}")
     print(f"{'=' * 50}\n")
-    app.run(host="127.0.0.1", port=5000, debug=False)
+    app.run(host=host, port=port, debug=False)

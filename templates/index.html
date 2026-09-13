@@ -37,6 +37,7 @@
     background: var(--bg-secondary);
     border-right: 1px solid var(--border);
     display: flex; flex-direction: column;
+    transition: transform 0.2s ease;
   }
   .main {
     flex: 1; display: flex; flex-direction: column;
@@ -135,6 +136,20 @@
   }
   .topbar .title { font-size: 14px; font-weight: 600; }
   .topbar .spacer { flex: 1; }
+  .menu-btn {
+    width: 32px; height: 32px;
+    display: none; align-items: center; justify-content: center;
+    background: none; border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text-secondary);
+    cursor: pointer; font-size: 16px;
+  }
+  .menu-btn:hover { color: var(--text); border-color: var(--text-muted); }
+  .sidebar-backdrop {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 20;
+  }
 
   .toggle-switch {
     display: flex; align-items: center; gap: 8px;
@@ -188,6 +203,7 @@
     background: var(--bg-secondary); border: 1px solid var(--border);
     border-radius: 12px; padding: 12px 16px;
     font-size: 14px; line-height: 1.7;
+    white-space: pre-wrap; overflow-wrap: anywhere;
   }
   .msg.user .bubble { background: #1a3a5f; border-color: #2f6fb5; }
 
@@ -283,7 +299,17 @@
 
   /* ---- 响应式 ---- */
   @media (max-width: 768px) {
-    .sidebar { display: none; }
+    .sidebar {
+      position: fixed; left: 0; top: 0; bottom: 0;
+      z-index: 30; width: min(86vw, 320px);
+      transform: translateX(-100%);
+      box-shadow: 12px 0 32px rgba(0, 0, 0, 0.3);
+    }
+    .sidebar.mobile-open { transform: translateX(0); }
+    .sidebar-backdrop.visible {
+      display: block;
+    }
+    .menu-btn { display: flex; }
   }
 </style>
 </head>
@@ -336,10 +362,12 @@
       </div>
     </div>
   </div>
+  <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
 
   <!-- 主区域 -->
   <div class="main">
     <div class="topbar">
+      <button class="menu-btn" id="menu-btn" aria-label="打开文档面板" title="打开文档面板">☰</button>
       <span class="title">💬 知识库问答</span>
       <div class="spacer"></div>
       <div class="toggle-switch">
@@ -380,9 +408,17 @@ const sendBtn = document.getElementById('send-btn');
 const emptyState = document.getElementById('empty-state');
 const expansionToggle = document.getElementById('expansion-toggle');
 const clearBtn = document.getElementById('clear-btn');
+const sidebar = document.querySelector('.sidebar');
+const menuBtn = document.getElementById('menu-btn');
+const sidebarBackdrop = document.getElementById('sidebar-backdrop');
 
 let useExpansion = true;
 let isSending = false;
+
+function setSidebarOpen(open) {
+  sidebar.classList.toggle('mobile-open', open);
+  sidebarBackdrop.classList.toggle('visible', open);
+}
 
 // ---- 初始化 ----
 async function init() {
@@ -414,27 +450,50 @@ async function loadDocuments() {
     const res = await fetch('/api/documents');
     const docs = await res.json();
     const list = document.getElementById('doc-list');
+    list.replaceChildren();
     if (docs.length === 0) {
-      list.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px 0;">暂无文档</div>';
+      const empty = document.createElement('div');
+      empty.style.cssText = 'color:var(--text-muted);font-size:12px;padding:8px 0;';
+      empty.textContent = '暂无文档';
+      list.appendChild(empty);
       return;
     }
-    list.innerHTML = docs.map(d => {
+
+    docs.forEach(d => {
+      const item = document.createElement('div');
+      item.className = 'doc-item';
+
       const icon = d.name.endsWith('.pdf') ? '📕' : d.name.endsWith('.md') ? '📝' : d.name.endsWith('.docx') ? '📘' : '📄';
+      const iconEl = document.createElement('span');
+      iconEl.className = 'file-icon';
+      iconEl.textContent = icon;
+
+      const nameEl = document.createElement('span');
+      nameEl.className = 'name';
+      nameEl.title = d.name;
+      nameEl.textContent = d.name;
+
+      const sizeEl = document.createElement('span');
+      sizeEl.className = 'size';
       const sizeKB = (d.size / 1024).toFixed(1);
-      return `<div class="doc-item">
-        <span class="file-icon">${icon}</span>
-        <span class="name" title="${d.name}">${d.name}</span>
-        <span class="size">${sizeKB}KB</span>
-        <button class="del-btn" title="删除" onclick="deleteDoc('${d.file}')">✕</button>
-      </div>`;
-    }).join('');
+      sizeEl.textContent = `${sizeKB}KB`;
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'del-btn';
+      deleteBtn.title = '删除';
+      deleteBtn.setAttribute('aria-label', `删除 ${d.name}`);
+      deleteBtn.textContent = '✕';
+      deleteBtn.addEventListener('click', () => deleteDoc(d.file, d.name));
+
+      item.append(iconEl, nameEl, sizeEl, deleteBtn);
+      list.appendChild(item);
+    });
   } catch (e) {
     console.error('documents error:', e);
   }
 }
 
-async function deleteDoc(filename) {
-  const displayName = /^[0-9a-f]{8}_/.test(filename) ? filename.slice(9) : filename;
+async function deleteDoc(filename, displayName) {
   if (!confirm(`确定从知识库删除 "${displayName}" 吗？此操作不可恢复。`)) return;
 
   try {
@@ -466,17 +525,29 @@ function addMessage(role, text, sources) {
   const msg = document.createElement('div');
   msg.className = `msg ${role}`;
   const avatarText = role === 'user' ? 'U' : 'R';
-  let sourcesHtml = '';
+
+  const avatar = document.createElement('div');
+  avatar.className = 'avatar';
+  avatar.textContent = avatarText;
+
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = String(text ?? '');
+
   if (sources && sources.length > 0) {
-    const tags = sources.map(s => `<span class="source-tag">${s}</span>`).join('');
-    sourcesHtml = `<div class="sources">📎 来源: ${tags}</div>`;
+    const sourceBox = document.createElement('div');
+    sourceBox.className = 'sources';
+    sourceBox.append('📎 来源: ');
+    sources.forEach(source => {
+      const tag = document.createElement('span');
+      tag.className = 'source-tag';
+      tag.textContent = source;
+      sourceBox.appendChild(tag);
+    });
+    bubble.appendChild(sourceBox);
   }
-  // 简单的 markdown 代码块渲染
-  const formatted = text.replace(/\n/g, '<br>');
-  msg.innerHTML = `
-    <div class="avatar">${avatarText}</div>
-    <div class="bubble">${formatted}${sourcesHtml}</div>
-  `;
+
+  msg.append(avatar, bubble);
   chat.appendChild(msg);
   chat.scrollTop = chat.scrollHeight;
   toggleEmptyState();
@@ -487,12 +558,23 @@ function addTypingIndicator() {
   const msg = document.createElement('div');
   msg.className = 'msg bot';
   msg.id = 'typing-msg';
-  msg.innerHTML = `
-    <div class="avatar">R</div>
-    <div class="bubble">
-      <div class="typing-indicator"><span></span><span></span><span></span></div>
-    </div>
-  `;
+
+  const avatar = document.createElement('div');
+  avatar.className = 'avatar';
+  avatar.textContent = 'R';
+
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  const indicator = document.createElement('div');
+  indicator.className = 'typing-indicator';
+  indicator.append(
+    document.createElement('span'),
+    document.createElement('span'),
+    document.createElement('span'),
+  );
+  bubble.appendChild(indicator);
+
+  msg.append(avatar, bubble);
   chat.appendChild(msg);
   chat.scrollTop = chat.scrollHeight;
   toggleEmptyState();
@@ -566,6 +648,12 @@ clearBtn.addEventListener('click', () => {
   toggleEmptyState();
 });
 
+menuBtn.addEventListener('click', () => setSidebarOpen(true));
+sidebarBackdrop.addEventListener('click', () => setSidebarOpen(false));
+window.addEventListener('resize', () => {
+  if (window.innerWidth > 768) setSidebarOpen(false);
+});
+
 // 建议问题
 document.getElementById('suggestions').addEventListener('click', (e) => {
   if (e.target.classList.contains('suggestion-btn')) {
@@ -594,6 +682,7 @@ uploadArea.addEventListener('drop', (e) => {
   uploadArea.classList.remove('dragover');
   if (e.dataTransfer.files.length > 0) {
     uploadFiles(e.dataTransfer.files);
+    setSidebarOpen(false);
   }
 });
 
@@ -601,6 +690,8 @@ fileInput.addEventListener('change', () => {
   if (fileInput.files.length > 0) {
     uploadFiles(fileInput.files);
   }
+  fileInput.value = '';
+  setSidebarOpen(false);
 });
 
 async function uploadFiles(files) {
