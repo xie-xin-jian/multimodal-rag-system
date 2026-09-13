@@ -2,6 +2,7 @@
 
 支持 PDF（含扫描页 OCR 兜底）与 Markdown，输出带元数据的 LangChain Document。
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -50,29 +51,38 @@ class MultiModalDataLoader:
             for page_num, page in enumerate(pdf.pages, start=1):
                 text = page.extract_text() or ""
                 text = self._clean_text(text)
+                ocr_used = False
 
                 # 文本过少多半是扫描页，整页渲染后 OCR 兜底
                 if len(text) < _MIN_TEXT_LEN:
-                    text = self._ocr_page(page) or text
+                    page_ocr_text = self._ocr_page(page)
+                    if page_ocr_text:
+                        text = page_ocr_text
+                        ocr_used = True
 
-                # 页内嵌入图片若带文字，单独 OCR 补充
-                for img in page.images:
-                    crop_text = self._ocr_image_region(page, img)
-                    if crop_text:
-                        text = f"{text}\n{crop_text}".strip()
+                # 整页 OCR 已覆盖页内图片，避免对同一扫描图重复识别。
+                if not ocr_used:
+                    for img in page.images:
+                        crop_text = self._ocr_image_region(page, img)
+                        if crop_text:
+                            text = f"{text}\n{crop_text}".strip()
+                            ocr_used = True
 
                 if not text:
                     continue
 
-                docs.append(Document(
-                    page_content=text,
-                    metadata={
-                        "source": file_path,
-                        "page": page_num,
-                        "file_type": "pdf",
-                        "content_hash": hashlib.md5(text.encode("utf-8")).hexdigest(),
-                    },
-                ))
+                docs.append(
+                    Document(
+                        page_content=text,
+                        metadata={
+                            "source": file_path,
+                            "page": page_num,
+                            "file_type": "pdf",
+                            "page_hash": hashlib.md5(text.encode("utf-8")).hexdigest(),
+                            "ocr_used": ocr_used,
+                        },
+                    )
+                )
         return docs
 
     def _load_markdown(self, file_path: str) -> list[Document]:
@@ -80,28 +90,32 @@ class MultiModalDataLoader:
             text = self._clean_text(f.read())
         if not text:
             return []
-        return [Document(
-            page_content=text,
-            metadata={
-                "source": file_path,
-                "file_type": "md",
-                "content_hash": hashlib.md5(text.encode("utf-8")).hexdigest(),
-            },
-        )]
+        return [
+            Document(
+                page_content=text,
+                metadata={
+                    "source": file_path,
+                    "file_type": "md",
+                    "page_hash": hashlib.md5(text.encode("utf-8")).hexdigest(),
+                },
+            )
+        ]
 
     def _load_text(self, file_path: str) -> list[Document]:
         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
             text = self._clean_text(f.read())
         if not text:
             return []
-        return [Document(
-            page_content=text,
-            metadata={
-                "source": file_path,
-                "file_type": "txt",
-                "content_hash": hashlib.md5(text.encode("utf-8")).hexdigest(),
-            },
-        )]
+        return [
+            Document(
+                page_content=text,
+                metadata={
+                    "source": file_path,
+                    "file_type": "txt",
+                    "page_hash": hashlib.md5(text.encode("utf-8")).hexdigest(),
+                },
+            )
+        ]
 
     def _load_word(self, file_path: str) -> list[Document]:
         doc = DocxDocument(file_path)
@@ -125,11 +139,15 @@ class MultiModalDataLoader:
             header = section.header
             footer = section.footer
             if header and not header.is_linked_to_previous:
-                ht = " ".join(p.text.strip() for p in header.paragraphs if p.text.strip())
+                ht = " ".join(
+                    p.text.strip() for p in header.paragraphs if p.text.strip()
+                )
                 if ht:
                     paragraphs.append(f"[页眉] {ht}")
             if footer and not footer.is_linked_to_previous:
-                ft = " ".join(p.text.strip() for p in footer.paragraphs if p.text.strip())
+                ft = " ".join(
+                    p.text.strip() for p in footer.paragraphs if p.text.strip()
+                )
                 if ft:
                     paragraphs.append(f"[页脚] {ft}")
 
@@ -137,25 +155,33 @@ class MultiModalDataLoader:
         if not text:
             return []
 
-        return [Document(
-            page_content=text,
-            metadata={
-                "source": file_path,
-                "file_type": "docx",
-                "content_hash": hashlib.md5(text.encode("utf-8")).hexdigest(),
-            },
-        )]
+        return [
+            Document(
+                page_content=text,
+                metadata={
+                    "source": file_path,
+                    "file_type": "docx",
+                    "page_hash": hashlib.md5(text.encode("utf-8")).hexdigest(),
+                },
+            )
+        ]
 
     def process_documents(self, documents: Iterable[Document]) -> list[Document]:
         """切分并绑定 chunk 级元数据。
 
-        chunk_id 用 source + chunk_index 保证跨会话稳定，方便增量索引去重。
+        document_name 优先作为逻辑文档名，使 Web 上传文件替换后仍能稳定去重。
         """
         chunks = self.text_splitter.split_documents(list(documents))
         for idx, chunk in enumerate(chunks):
             source = chunk.metadata.get("source", "unknown")
-            chunk.metadata["chunk_id"] = f"{source}#{idx}"
+            document_name = chunk.metadata.get("document_name", source)
+            chunk_id = f"{document_name}#{idx}"
+            chunk.metadata["chunk_id"] = chunk_id
             chunk.metadata["chunk_index"] = idx
+            chunk.metadata["content_hash"] = hashlib.md5(
+                chunk.page_content.encode("utf-8")
+            ).hexdigest()
+            chunk.id = chunk_id
         return chunks
 
     @staticmethod
@@ -178,8 +204,15 @@ class MultiModalDataLoader:
     @staticmethod
     def _ocr_image_region(page, img_meta) -> str:
         try:
-            x0, top, x1, bottom = img_meta["x0"], img_meta["top"], img_meta["x1"], img_meta["bottom"]
-            cropped = page.within((x0, top, x1, bottom)).to_image(resolution=200).original
+            x0, top, x1, bottom = (
+                img_meta["x0"],
+                img_meta["top"],
+                img_meta["x1"],
+                img_meta["bottom"],
+            )
+            cropped = (
+                page.within((x0, top, x1, bottom)).to_image(resolution=200).original
+            )
             text = pytesseract.image_to_string(cropped, lang="chi_sim+eng")
             return text.strip()
         except Exception as e:
