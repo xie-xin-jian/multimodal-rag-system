@@ -1,15 +1,39 @@
 """RAG 系统评估：检索层用 Hit Rate / MRR，生成层用 RAGAS 四件套。"""
+
 from __future__ import annotations
 
+import importlib
+import sys
+import types
 from typing import Optional
 
 import pandas as pd
 from datasets import Dataset
 
+from rag_utils import retrieval_metrics
+
+
+def _ensure_ragas_import_compat() -> None:
+    """Bridge a missing legacy import used by ragas 0.4.x."""
+    module_name = "langchain_community.chat_models.vertexai"
+    try:
+        importlib.import_module(module_name)
+    except ModuleNotFoundError as exc:
+        if exc.name != module_name:
+            raise
+        module = types.ModuleType(module_name)
+
+        class ChatVertexAI:
+            """Compatibility placeholder; Ollama does not use Vertex AI."""
+
+        module.ChatVertexAI = ChatVertexAI
+        sys.modules[module_name] = module
+
 
 class RAGEvaluator:
-    def __init__(self, llm=None):
+    def __init__(self, llm=None, embeddings=None):
         self.llm = llm
+        self.embeddings = embeddings
 
     def prepare_evaluation_data(
         self,
@@ -22,14 +46,19 @@ class RAGEvaluator:
             raise ValueError("questions / answers / contexts length mismatch")
         if ground_truths is None:
             ground_truths = [""] * len(questions)
-        return Dataset.from_dict({
-            "question": questions,
-            "answer": answers,
-            "contexts": contexts,
-            "ground_truth": ground_truths,
-        })
+        if len(ground_truths) != len(questions):
+            raise ValueError("questions / ground_truths length mismatch")
+        return Dataset.from_dict(
+            {
+                "question": questions,
+                "answer": answers,
+                "contexts": contexts,
+                "ground_truth": ground_truths,
+            }
+        )
 
     def run_evaluation(self, dataset: Dataset) -> dict:
+        _ensure_ragas_import_compat()
         from ragas import evaluate
         from ragas.metrics import (
             answer_relevancy,
@@ -39,9 +68,15 @@ class RAGEvaluator:
         )
 
         metrics = [context_precision, context_recall, faithfulness, answer_relevancy]
-        kwargs = {"dataset": dataset, "metrics": metrics}
+        kwargs = {
+            "dataset": dataset,
+            "metrics": metrics,
+            "raise_exceptions": True,
+        }
         if self.llm is not None:
             kwargs["llm"] = self.llm
+        if self.embeddings is not None:
+            kwargs["embeddings"] = self.embeddings
         results = evaluate(**kwargs)
         print("[eval] RAGAS done")
         return results
@@ -59,26 +94,18 @@ class RAGEvaluator:
             retrieved = retriever.retrieve_with_rerank(query, top_k=top_k)
             retrieved_ids = [d.metadata.get("chunk_id") for d in retrieved]
 
-            hits = len(set(retrieved_ids) & expected_ids)
-            hit_rate = hits / len(expected_ids)
-
-            reciprocal_rank = 0.0
-            for rank, rid in enumerate(retrieved_ids, start=1):
-                if rid in expected_ids:
-                    reciprocal_rank = 1.0 / rank
-                    break
-
-            results.append({
-                "query": query,
-                "hit_rate": hit_rate,
-                "mrr": reciprocal_rank,
-                "retrieved": retrieved_ids,
-            })
+            metrics = retrieval_metrics(
+                retrieved_ids,
+                expected_ids,
+                k=top_k,
+            )
+            results.append({"query": query, **metrics})
 
         df = pd.DataFrame(results)
         if not df.empty:
             print(
                 f"[eval] retrieval: hit_rate={df['hit_rate'].mean():.3f} "
+                f"recall@{top_k}={df['recall_at_k'].mean():.3f} "
                 f"mrr={df['mrr'].mean():.3f} (n={len(df)})"
             )
         return df
