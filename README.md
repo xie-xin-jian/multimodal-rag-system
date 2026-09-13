@@ -15,24 +15,26 @@ Python / LangChain / Chroma / sentence-transformers (Cross-Encoder) / RAGAS / pd
 - PDF 文本提取走 `pdfplumber`，对单页可提取文本低于阈值的扫描页自动渲染为图片做 OCR 兜底；
 - 页内嵌入图片按坐标裁剪后单独 OCR，文本与图片信息合并入 chunk；
 - 切分前做清洗：去除行尾空白、孤立页码行、连续空行；
-- 每个 chunk 绑定 `source / page / chunk_id / content_hash` 元数据，`chunk_id` 跨会话稳定，支持增量去重。
+- 每个 chunk 绑定 `source / page / chunk_id / content_hash` 元数据；Web 上传使用逻辑文档名生成稳定 `chunk_id`，重复上传同一文档会替换旧 chunk。
 
 ### 混合检索与 Rerank 精排
 
 - **召回层**：BM25（稀疏）+ Dense Vector（稠密，Chroma）通过 `EnsembleRetriever` 加权融合，权重可配置；
-- **精排层**：Cross-Encoder (`cross-encoder/ms-marco-MiniLM-L-6-v2`) 对候选 chunk 重新打分，取 Top-K；
-- **查询改写**：LLM 将原问题改写为多个语义等价的子查询，多路召回后按 `chunk_id` 去重合并；
+- **精排层**：多语言 Cross-Encoder (`cross-encoder/mmarco-mMiniLMv2-L12-H384-v1`) 对候选 chunk 重新打分，取 Top-K；
+- 默认只读取本地模型缓存；若主模型不可用，会回退到已缓存的 `ms-marco-MiniLM-L-6-v2`，设置 `RAG_RERANKER_ALLOW_DOWNLOAD=1` 可允许在线下载主模型；
+- **查询改写**：LLM 将原问题改写为多个语义等价的子查询，合并全部候选并按 `chunk_id` 去重后，使用原始问题统一精排；
+- **中文稀疏检索**：BM25 对中文使用字符、二元和三元 token，英文及代码标识符保持完整 token；
 - `HybridRetriever` 继承 `BaseRetriever`，可直接接入 LangChain 的 LCEL / Retrieval 链路。
 
 ### 增量索引
 
-- 向量库走 Chroma 的 `add_documents` 增量接口；
+- 向量库使用稳定的 chunk ID 进行 upsert，同一逻辑文档重新上传时先替换旧 chunk；
 - BM25 索引在新增文档后整体重建（in-memory，重建代价可接受），保证稀疏检索与稠密检索的视图一致。
 
 ### 基于 RAGAS 的可量化评估
 
 - **检索层**：Hit Rate、MRR（Mean Reciprocal Rank）；
-- **生成层**：RAGAS 四件套 —— `context_precision` / `context_recall` / `faithfulness` / `answer_relevancy`；
+- **生成层**：RAGAS 四件套 —— `context_precision` / `context_recall` / `faithfulness` / `answer_relevancy`，复用本地 Ollama embeddings；
 - 评估失败直接抛出异常，不返回兜底假分数。
 
 ## 项目结构
@@ -43,6 +45,9 @@ Python / LangChain / Chroma / sentence-transformers (Cross-Encoder) / RAGAS / pd
 ├── retriever.py        # HybridRetriever：BM25+Dense+Rerank+查询改写
 ├── evaluator.py        # RAGAS / Hit Rate / MRR 评估
 ├── main.py             # 系统主入口 MiniRAGSystem
+├── app.py              # Flask Web UI 与 REST API
+├── rag_utils.py        # 中文 BM25 分词、路径安全与检索指标
+├── tests/              # 不依赖模型的单元测试
 ├── requirements.txt
 └── README.md
 ```
@@ -93,6 +98,31 @@ report = system.run_evaluation(test_data)
 print(report["retrieval"])
 print(report["ragas"])
 ```
+
+## Web 启动
+
+```bash
+python app.py
+```
+
+默认访问地址为 `http://127.0.0.1:5000`。可通过环境变量覆盖：
+
+```bash
+RAG_EMBED_MODEL=nomic-embed-text
+RAG_LLM_MODEL=qwen2.5
+RAG_PERSIST_DIR=chroma_db
+RAG_HOST=127.0.0.1
+RAG_PORT=5000
+RAG_RERANKER_ALLOW_DOWNLOAD=0
+```
+
+## 测试
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+当前测试覆盖中文 BM25 分词、安全文件路径、标准 Hit Rate / Recall / MRR 计算，以及 Chroma 索引的构建、替换、删除和重新加载。
 
 ## 设计取舍
 
