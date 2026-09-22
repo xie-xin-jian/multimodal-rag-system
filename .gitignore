@@ -49,6 +49,13 @@ desktop.ini
 
 # Chroma vector database (runtime-generated, user-specific)
 chroma_db/
+data/
+
+# Knowledge release registry and temporary workspace files
+knowledge_registry.sqlite3
+knowledge_registry.sqlite3-shm
+knowledge_registry.sqlite3-wal
+tmp/
 
 # Project-specific: personal notes (not for public repo)
 项目面试复习笔记.md

@@ -31,6 +31,17 @@ Python / LangChain / Chroma / sentence-transformers (Cross-Encoder) / RAGAS / pd
 - 向量库使用稳定的 chunk ID 进行 upsert，同一逻辑文档重新上传时先替换旧 chunk；
 - BM25 索引在新增文档后整体重建（in-memory，重建代价可接受），保证稀疏检索与稠密检索的视图一致。
 
+### 版本化知识库发布链路
+
+- Web 上传不会直接修改线上索引，而是先写入 SQLite 发布注册表并创建后台任务；
+- 新文档写入独立的 `rag_release_N` Chroma collection，未变化文档直接复用已持久化向量；
+- 发布完成后通过 `active_release_id` 原子切换当前版本，更新过程中旧版本持续提供查询；
+- 保留历史 release 和源文件，支持异步任务重试以及一键回滚；
+- 相同文档 Hash 和索引版本会识别为 `NOOP`，避免重复解析与 Embedding；
+- 任务状态覆盖 `QUEUED / RUNNING / STAGED / ACTIVE / FAILED / NOOP`，可查询单任务或最近发布记录；
+- 后台定时扫描 `data/`，发现绕过 Web API 的外部文件变更后自动创建增量发布任务；
+- 默认只保留最近 `5` 个 release，Active 版本始终保留，其余 collection 和未被引用源文件会清理。
+
 ### 基于 RAGAS 的可量化评估
 
 - **检索层**：Hit Rate、MRR（Mean Reciprocal Rank）；
@@ -46,6 +57,10 @@ Python / LangChain / Chroma / sentence-transformers (Cross-Encoder) / RAGAS / pd
 ├── evaluator.py        # RAGAS / Hit Rate / MRR 评估
 ├── main.py             # 系统主入口 MiniRAGSystem
 ├── app.py              # Flask Web UI 与 REST API
+├── knowledge_release.py # 发布管理器入口与公开请求 API
+├── release_models.py    # 发布状态、数据模型与通用 Hash
+├── release_registry.py  # SQLite Schema、事务与版本查询
+├── release_worker.py    # 后台 Worker、对账、发布与清理
 ├── rag_utils.py        # 中文 BM25 分词、路径安全与检索指标
 ├── tests/              # 不依赖模型的单元测试
 ├── requirements.txt
@@ -111,9 +126,27 @@ python app.py
 RAG_EMBED_MODEL=nomic-embed-text
 RAG_LLM_MODEL=qwen2.5
 RAG_PERSIST_DIR=chroma_db
+RAG_REGISTRY_PATH=knowledge_registry.sqlite3
+RAG_PARSER_VERSION=parser-v1
+RAG_CHUNKING_VERSION=chunk-500-50-v1
+RAG_EMBEDDING_VERSION=nomic-embed-text
+RAG_RETAIN_RELEASES=5
+RAG_RECONCILE_INTERVAL_SECONDS=300
 RAG_HOST=127.0.0.1
 RAG_PORT=5000
 RAG_RERANKER_ALLOW_DOWNLOAD=0
+```
+
+发布相关接口：
+
+```text
+POST /api/ingest              上传并创建异步发布任务
+POST /api/delete              创建文档删除任务
+GET  /api/jobs/<job_id>       查询任务状态
+POST /api/jobs/<job_id>/retry 重试失败任务
+GET  /api/releases            查询历史版本
+POST /api/rollback            回滚到指定 release
+POST /api/reconcile           立即执行一次外部文件对账
 ```
 
 ## 测试
@@ -122,10 +155,11 @@ RAG_RERANKER_ALLOW_DOWNLOAD=0
 python -m unittest discover -s tests -v
 ```
 
-当前测试覆盖中文 BM25 分词、安全文件路径、标准 Hit Rate / Recall / MRR 计算，以及 Chroma 索引的构建、替换、删除和重新加载。
+当前共有 18 个测试，覆盖中文 BM25 分词、安全文件路径、标准检索指标、Chroma 索引生命周期、Reranker 回退、版本发布、幂等任务、失败重试、外部文件对账、版本清理、回滚和 Worker 重启恢复。
 
 ## 设计取舍
 
 - **为什么混合检索？** 稠密向量擅长语义近似（"乔布斯创立的科技公司" ↔ "苹果公司"），BM25 擅长精确关键词命中（API 名、错误码）。两者互补，单路都会有盲区。
 - **为什么需要 Rerank？** 召回阶段优先保证 Recall（候选 10+），Cross-Encoder 用更重的双塔交互模型对候选精排，提升最终 Top-K 的 Precision。
 - **为什么 BM25 重建而不是增量？** `rank_bm25` 的 IDF 统计依赖全量文档，增量更新需要重算 IDF，整体重建比维护增量更简单且代价可接受。
+- **为什么采用版本化 collection？** 直接删除旧向量再写新向量会产生查询空窗；先完整构建新版本，再原子切换活动版本，可以在失败时保留旧版本并支持秒级回滚。
