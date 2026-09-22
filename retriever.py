@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
-from typing import Optional
+from typing import Optional, Sequence
 
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_core.documents import Document
@@ -34,8 +34,8 @@ class HybridRetriever(BaseRetriever):
     candidate_k: int = 10
     final_top_k: int = 3
     collection_name: str = "langchain"
-    reranker_model: str = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
-    reranker_fallback_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    reranker_model: str = "BAAI/bge-reranker-v2-m3"
+    reranker_fallback_model: str = "BAAI/bge-reranker-base"
 
     # BaseRetriever 基于 pydantic，运行期对象走 PrivateAttr
     _vector_store: Optional[Chroma] = PrivateAttr(default=None)
@@ -50,19 +50,90 @@ class HybridRetriever(BaseRetriever):
         if not chunks:
             raise ValueError("empty chunk list")
 
-        self._all_chunks = self._deduplicate_documents(chunks)
+        deduplicated = self._deduplicate_documents(chunks)
+        vectors = embeddings.embed_documents(
+            [document.page_content for document in deduplicated]
+        )
+        self.build_index_from_records(list(zip(deduplicated, vectors)), embeddings)
+
+    def build_index_from_records(
+        self,
+        records: Sequence[tuple[Document, Sequence[float]]],
+        embeddings,
+    ) -> None:
+        """Build a collection while reusing vectors from an existing release."""
+        unique: dict[str, tuple[Document, list[float]]] = {}
+        for document, vector in records:
+            document_id = self._document_id(document)
+            unique[document_id] = (document, [float(value) for value in vector])
+
+        if not unique:
+            self.clear_index()
+            return
+
+        self._all_chunks = [document for document, _ in unique.values()]
         self._vector_store = Chroma(
             collection_name=self.collection_name,
             embedding_function=embeddings,
             persist_directory=self.persist_directory,
         )
         self._vector_store.reset_collection()
-        self._add_to_vector_store(self._all_chunks)
+        self._add_records_to_vector_store(list(unique.values()))
         self._init_bm25_and_ensemble()
         print(
             f"[retriever] index built: {len(self._all_chunks)} chunks "
             f"-> {self.persist_directory}"
         )
+
+    def snapshot(self) -> list[tuple[Document, list[float]]]:
+        """Return documents and stored vectors for versioned index cloning."""
+        if not self._vector_store:
+            return []
+
+        raw = self._vector_store.get(include=["embeddings", "documents", "metadatas"])
+        embeddings = raw.get("embeddings")
+        documents = raw.get("documents")
+        metadatas = raw.get("metadatas")
+        if embeddings is None or documents is None or metadatas is None:
+            raise RuntimeError("vector store snapshot is missing required data")
+
+        records: list[tuple[Document, list[float]]] = []
+        for document_id, content, metadata, vector in zip(
+            raw["ids"],
+            documents,
+            metadatas,
+            embeddings,
+        ):
+            if content is None:
+                continue
+            records.append(
+                (
+                    Document(
+                        id=document_id,
+                        page_content=content,
+                        metadata=dict(metadata or {}),
+                    ),
+                    [float(value) for value in vector],
+                )
+            )
+        return records
+
+    def clear_index(self) -> None:
+        """Reset in-memory state without deleting a persisted collection."""
+        self._all_chunks = []
+        self._vector_store = None
+        self._bm25_retriever = None
+        self._ensemble_retriever = None
+
+    def dispose(self) -> None:
+        """Delete this release collection and release runtime resources."""
+        if self._vector_store is not None:
+            try:
+                self._vector_store.delete_collection()
+            finally:
+                self.clear_index()
+        else:
+            self.clear_index()
 
     def load_index(self, embeddings) -> bool:
         if not os.path.exists(self.persist_directory):
@@ -206,6 +277,17 @@ class HybridRetriever(BaseRetriever):
         candidates = self._ensemble_retriever.invoke(query)
         return self._rerank(query, candidates, top_k)
 
+    def retrieve_hybrid(
+        self,
+        query: str,
+        top_k: Optional[int] = None,
+    ) -> list[Document]:
+        """Return fused candidates without loading a CrossEncoder."""
+        if not self._ensemble_retriever:
+            return []
+        candidates = self._deduplicate_documents(self._ensemble_retriever.invoke(query))
+        return candidates[: top_k or self.final_top_k]
+
     def _rerank(
         self,
         query: str,
@@ -295,6 +377,24 @@ class HybridRetriever(BaseRetriever):
         self._vector_store.add_documents(
             documents=documents,
             ids=[self._document_id(doc) for doc in documents],
+        )
+
+    def _add_records_to_vector_store(
+        self,
+        records: list[tuple[Document, list[float]]],
+    ) -> None:
+        if not self._vector_store:
+            raise RuntimeError("vector store not initialized")
+        if not records:
+            return
+
+        documents = [document for document, _ in records]
+        vectors = [vector for _, vector in records]
+        self._vector_store.add_texts(
+            texts=[document.page_content for document in documents],
+            metadatas=[dict(document.metadata) for document in documents],
+            ids=[self._document_id(document) for document in documents],
+            embeddings=vectors,
         )
 
     @staticmethod

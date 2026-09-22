@@ -122,6 +122,11 @@ class MiniRAGSystem:
                 document.metadata["document_name"] = document_name
         return self.data_loader.process_documents(documents)
 
+    def replace_retriever(self, retriever: HybridRetriever) -> None:
+        """Atomically swap the active retriever used by query requests."""
+        self.retriever = retriever
+        self._loaded = retriever.has_index
+
     # ---- 问答 ----
 
     def ask(self, query: str, use_query_expansion: bool = True) -> dict:
