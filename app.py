@@ -13,6 +13,7 @@ os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 
 from flask import Flask, request, jsonify, render_template
 
+from knowledge_release import KnowledgeReleaseManager, UploadItem
 from main import MiniRAGSystem
 from rag_utils import (
     display_filename,
@@ -35,6 +36,29 @@ DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 ALLOWED_EXT = {".pdf", ".md", ".txt", ".markdown", ".docx"}
+REGISTRY_PATH = os.environ.get(
+    "RAG_REGISTRY_PATH",
+    os.path.join(os.path.dirname(__file__), "knowledge_registry.sqlite3"),
+)
+release_manager = KnowledgeReleaseManager(
+    rag,
+    registry_path=REGISTRY_PATH,
+    data_directory=DATA_DIR,
+    parser_version=os.environ.get("RAG_PARSER_VERSION", "parser-v1"),
+    chunking_version=os.environ.get(
+        "RAG_CHUNKING_VERSION",
+        "chunk-500-50-v1",
+    ),
+    embedding_version=os.environ.get(
+        "RAG_EMBEDDING_VERSION",
+        os.environ.get("RAG_EMBED_MODEL", "nomic-embed-text"),
+    ),
+    retain_releases=int(os.environ.get("RAG_RETAIN_RELEASES", "5")),
+    reconcile_interval_seconds=int(
+        os.environ.get("RAG_RECONCILE_INTERVAL_SECONDS", "300")
+    ),
+    start_worker=True,
+)
 
 
 def _allowed_file(filename: str) -> bool:
@@ -60,18 +84,7 @@ def index():
 
 @app.route("/api/status")
 def status():
-    chunk_count = rag.retriever.chunk_count if rag._loaded else 0
-    sources_set = set(rag.retriever.document_names) if rag._loaded else set()
-
-    return jsonify(
-        {
-            "loaded": rag._loaded,
-            "chunk_count": chunk_count,
-            "documents": sorted(sources_set),
-            "embed_model": rag.embed_model,
-            "llm_model": rag.llm_model,
-        }
-    )
+    return jsonify(release_manager.get_status())
 
 
 @app.route("/api/ask", methods=["POST"])
@@ -102,10 +115,8 @@ def ingest():
         return jsonify({"error": "no files uploaded"}), 400
 
     files = request.files.getlist("files")
-    saved_paths = []
-    document_names = []
+    upload_items = []
     created_paths = []
-    replaced_paths = set()
     batch_names = set()
 
     for f in files:
@@ -131,33 +142,32 @@ def ingest():
         if not os.path.exists(save_path):
             f.save(save_path)
             created_paths.append(save_path)
-        saved_paths.append(save_path)
         document_name = safe_name
-        document_names.append(document_name)
+        upload_items.append(
+            UploadItem(
+                source_path=save_path,
+                document_name=document_name,
+                content_hash=digest,
+                size_bytes=os.path.getsize(save_path),
+            )
+        )
 
-        for existing in os.listdir(DATA_DIR):
-            existing_path = os.path.join(DATA_DIR, existing)
-            if (
-                os.path.isfile(existing_path)
-                and existing_path != save_path
-                and display_filename(existing) == document_name
-            ):
-                replaced_paths.add(existing_path)
-
-    if not saved_paths:
+    if not upload_items:
         return jsonify({"error": "no valid files (supported: PDF, MD, TXT, DOCX)"}), 400
 
     try:
-        if rag._loaded:
-            rag.add_documents(saved_paths, document_names=document_names)
-        else:
-            rag.ingest_knowledge(saved_paths, document_names=document_names)
-
-        for old_path in replaced_paths:
-            if os.path.exists(old_path):
-                os.remove(old_path)
-
-        return jsonify({"success": True, "files": document_names})
+        job = release_manager.enqueue_upload(upload_items)
+        return (
+            jsonify(
+                {
+                    "success": True,
+                    "accepted": True,
+                    "files": [item.document_name for item in upload_items],
+                    "job": job,
+                }
+            ),
+            202,
+        )
     except Exception as e:
         for created_path in created_paths:
             if os.path.exists(created_path):
@@ -168,18 +178,7 @@ def ingest():
 @app.route("/api/documents")
 def documents():
     """列出 data 目录下所有文档"""
-    docs = []
-    for f in os.listdir(DATA_DIR):
-        if os.path.splitext(f)[1].lower() in ALLOWED_EXT:
-            docs.append(
-                {
-                    "name": display_filename(f),
-                    "file": f,
-                    "size": os.path.getsize(os.path.join(DATA_DIR, f)),
-                }
-            )
-    docs.sort(key=lambda x: x["name"])
-    return jsonify(docs)
+    return jsonify(release_manager.list_active_documents())
 
 
 @app.route("/api/delete", methods=["POST"])
@@ -206,10 +205,70 @@ def delete_document():
         return jsonify({"error": "document not found"}), 404
 
     try:
-        removed = rag.remove_document(actual_file)
-        return jsonify({"success": True, "removed": removed})
+        job = release_manager.enqueue_delete(
+            actual_file,
+            doc_id=display_filename(actual_file),
+        )
+        return jsonify({"success": True, "accepted": True, "job": job}), 202
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/jobs/<job_id>")
+def get_job(job_id: str):
+    job = release_manager.get_job(job_id)
+    if job is None:
+        return jsonify({"error": "job not found"}), 404
+    return jsonify(job)
+
+
+@app.route("/api/jobs/<job_id>/retry", methods=["POST"])
+def retry_job(job_id: str):
+    try:
+        job = release_manager.retry_job(job_id)
+        return jsonify({"success": True, "job": job}), 202
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/releases")
+def releases():
+    return jsonify(release_manager.list_releases(limit=12))
+
+
+@app.route("/api/rollback", methods=["POST"])
+def rollback():
+    data = request.get_json(silent=True) or {}
+    target = data.get("release_id")
+    try:
+        target_release_id = int(target)
+    except (TypeError, ValueError):
+        return jsonify({"error": "invalid release_id"}), 400
+
+    try:
+        job = release_manager.enqueue_rollback(target_release_id)
+        return jsonify({"success": True, "accepted": True, "job": job}), 202
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/reconcile", methods=["POST"])
+def reconcile():
+    try:
+        job = release_manager.run_reconciliation()
+        return jsonify(
+            {
+                "success": True,
+                "changed": job is not None,
+                "job": job,
+            }
+        )
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
 
 
 if __name__ == "__main__":
@@ -219,6 +278,8 @@ if __name__ == "__main__":
     print("  多模态RAG知识库问答系统 Web UI")
     print(f"  知识库状态: {'已加载' if rag._loaded else '空'}")
     print(f"  Chunk 数量: {rag.retriever.chunk_count}")
+    active_release = release_manager.active_release()
+    print(f"  当前版本: {active_release['id'] if active_release else '无'}")
     print(f"  访问地址: http://{host}:{port}")
     print(f"{'=' * 50}\n")
     app.run(host=host, port=port, debug=False)

@@ -87,6 +87,62 @@
     font-size: 10px; padding: 2px 8px; border-radius: 20px;
     font-weight: 600;
   }
+  .badge-neutral {
+    background: var(--bg-tertiary); color: var(--text-secondary);
+    font-size: 10px; padding: 2px 8px; border-radius: 20px;
+    font-weight: 600;
+  }
+  .badge-warn {
+    background: var(--orange); color: #fff;
+    font-size: 10px; padding: 2px 8px; border-radius: 20px;
+    font-weight: 600;
+  }
+
+  /* ---- 发布版本 ---- */
+  .release-list {
+    max-height: 178px; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .section-title-row {
+    display: flex; align-items: center;
+    justify-content: space-between; gap: 8px;
+    margin-bottom: 10px;
+  }
+  .section-title-row h2 { margin-bottom: 0; }
+  .release-item {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 7px 8px;
+    background: var(--bg);
+  }
+  .release-line {
+    display: flex; align-items: center;
+    justify-content: space-between; gap: 8px;
+    font-size: 12px;
+  }
+  .release-title {
+    min-width: 0; max-width: 190px;
+    overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; font-variant-numeric: tabular-nums;
+  }
+  .release-actions {
+    display: flex; align-items: center; gap: 5px;
+    margin-top: 6px;
+  }
+  .release-meta {
+    margin-top: 4px; color: var(--text-muted);
+    font-size: 10px; font-family: monospace;
+  }
+  .rollback-btn {
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: transparent;
+    color: var(--accent);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 2px 7px;
+  }
+  .rollback-btn:hover { border-color: var(--accent); }
 
   /* ---- 上传区 ---- */
   .upload-area {
@@ -311,9 +367,306 @@
     }
     .menu-btn { display: flex; }
   }
+
+  /* ---- workspace refresh ---- */
+  :root {
+    --bg: #0a0f14;
+    --bg-secondary: #101820;
+    --bg-tertiary: #18232f;
+    --border: #243242;
+    --text: #ecf3f8;
+    --text-secondary: #9aafc1;
+    --text-muted: #6f8497;
+    --accent: #2dd4bf;
+    --accent-hover: #14b8a6;
+    --green: #22c55e;
+    --green-hover: #16a34a;
+    --red: #f43f5e;
+    --orange: #f59e0b;
+    --radius: 8px;
+  }
+  body {
+    background: var(--bg);
+    letter-spacing: 0;
+  }
+  .app { background: var(--bg); }
+  .icon {
+    width: 16px; height: 16px; flex-shrink: 0;
+    fill: none; stroke: currentColor; stroke-width: 1.9;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+  .sidebar {
+    width: 304px;
+    background: #0e151d;
+    border-right-color: #1d2a37;
+  }
+  .sidebar-header {
+    padding: 18px;
+    border-bottom-color: #1d2a37;
+    background: #0e151d;
+  }
+  .logo {
+    width: 34px; height: 34px;
+    background: var(--accent);
+    color: #042522;
+    border-radius: 8px;
+    box-shadow: 0 6px 18px rgba(45, 212, 191, 0.16);
+  }
+  .sidebar-header h1 { font-size: 14px; letter-spacing: 0; }
+  .sidebar-header .sub { margin-top: 2px; color: #72889b; }
+  .sidebar-section {
+    padding: 15px 18px;
+    border-bottom-color: #1d2a37;
+  }
+  .sidebar-section h2 {
+    color: #71879a;
+    font-size: 10px;
+    letter-spacing: 0;
+    font-weight: 700;
+    margin-bottom: 9px;
+  }
+  .status-section { padding-bottom: 16px; }
+  .status-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+  .status-item {
+    min-width: 0; min-height: 48px;
+    padding: 8px 9px;
+    border: 1px solid #1f2d3b;
+    border-radius: 7px;
+    background: #111b25;
+    display: flex; flex-direction: column;
+    justify-content: space-between; gap: 5px;
+  }
+  .status-item-wide { grid-column: 1 / -1; flex-direction: row; align-items: center; }
+  .status-item .label {
+    color: #73899c; font-size: 10px;
+    white-space: nowrap;
+  }
+  .status-item .value {
+    min-width: 0; color: #dbe7ef;
+    font-size: 12px; font-weight: 650;
+    font-family: "Cascadia Code", Consolas, monospace;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .model-value { font-size: 10px; }
+  .badge-ok, .badge-err, .badge-neutral, .badge-warn {
+    width: fit-content; max-width: 100%;
+    padding: 3px 8px; border-radius: 999px;
+    font-size: 9px; line-height: 1.2; letter-spacing: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .badge-ok { background: #163f2c; color: #74e3a1; border: 1px solid #245a3d; }
+  .badge-err { background: #471a27; color: #ff92a6; border: 1px solid #713044; }
+  .badge-neutral { background: #1a2733; color: #9db1c2; border: 1px solid #2b3d4e; }
+  .badge-warn { background: #493817; color: #ffd47a; border: 1px solid #725724; }
+  .upload-area {
+    padding: 17px 13px;
+    border: 1px dashed #33475a;
+    border-radius: 8px;
+    background: #111b25;
+  }
+  .upload-area:hover, .upload-area.dragover {
+    border-color: var(--accent);
+    background: #102522;
+  }
+  .upload-icon {
+    width: 34px; height: 34px; margin: 0 auto 9px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    background: #17332f; color: var(--accent);
+  }
+  .upload-icon .icon { width: 17px; height: 17px; }
+  .upload-area p { color: #d4e0e9; font-size: 12px; font-weight: 650; }
+  .upload-area .hint { margin-top: 4px; color: #71879a; font-size: 10px; }
+  .section-title-row { margin-bottom: 9px; }
+  .section-title-row h2 { margin: 0; }
+  .release-list { gap: 7px; max-height: 190px; }
+  .release-item {
+    padding: 8px 9px;
+    background: #111b25;
+    border-color: #1f2d3b;
+  }
+  .release-line { font-size: 11px; }
+  .release-meta { margin-top: 5px; color: #6f8497; font-size: 9px; }
+  .rollback-btn {
+    min-height: 25px; border-color: #2d4459;
+    color: #84d9cf; background: #12232a;
+    display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  }
+  .rollback-btn:hover { border-color: var(--accent); background: #15302e; }
+  .rollback-btn .icon { width: 12px; height: 12px; }
+  .doc-list { padding: 0 10px 10px; }
+  .doc-item {
+    gap: 8px; margin-bottom: 6px;
+    padding: 9px 9px;
+    border: 1px solid #1f2d3b;
+    border-radius: 7px;
+    background: #111b25;
+    font-size: 12px;
+  }
+  .doc-item .name { color: #dce7ef; }
+  .doc-item .size { color: #71879a; font-size: 10px; }
+  .doc-item .del-btn {
+    width: 25px; height: 25px;
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 0; color: #71879a;
+  }
+  .doc-item .del-btn .icon { width: 13px; height: 13px; }
+  .main { background: var(--bg); }
+  .topbar {
+    height: 62px;
+    padding: 0 24px;
+    border-bottom-color: #1d2a37;
+    background: #0e151d;
+  }
+  .topbar .title {
+    display: flex; align-items: center; gap: 8px;
+    color: #e7eff5; font-size: 14px; font-weight: 700;
+  }
+  .title-icon { color: var(--accent); width: 17px; height: 17px; }
+  .menu-btn {
+    color: #aabccb; border-color: #2c3d4d; background: #131e28;
+  }
+  .clear-btn {
+    height: 31px; padding: 0 12px;
+    color: #98adbe; background: #131e28;
+    border: 1px solid #2b3c4c; border-radius: 6px;
+    font-size: 11px; cursor: pointer;
+  }
+  .clear-btn:hover { color: #e7eff5; border-color: #43596d; }
+  .toggle-switch { color: #9aafc1; font-size: 11px; }
+  .toggle { width: 38px; height: 21px; border-color: #334656; background: #1a2733; }
+  .toggle.active { background: var(--accent); border-color: var(--accent); }
+  .toggle::after { width: 15px; height: 15px; }
+  .toggle.active::after { left: 19px; }
+  .chat-container {
+    padding: 28px max(24px, calc((100% - 920px) / 2));
+    gap: 18px;
+  }
+  .msg { max-width: min(78%, 780px); gap: 10px; }
+  .msg .avatar {
+    width: 30px; height: 30px;
+    background: #1b2936; color: #b9c9d6;
+    font-size: 11px; font-weight: 750;
+    border: 1px solid #2b3d4d;
+  }
+  .msg.user .avatar { background: #1d3550; color: #bfe0ff; border-color: #315576; }
+  .msg.bot .avatar { background: #15332f; color: #7de0d2; border-color: #27564f; }
+  .msg .bubble {
+    padding: 12px 15px;
+    border-color: #263647;
+    border-radius: 10px;
+    background: #111a23;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    font-size: 13px; line-height: 1.72;
+  }
+  .msg.user .bubble { background: #172b3d; border-color: #2b4c68; }
+  .source-tag {
+    padding: 3px 7px; border-radius: 5px;
+    background: #17242e; border-color: #2a3b4a;
+    color: #77d8cc;
+  }
+  .empty-state { gap: 11px; color: #72889b; }
+  .empty-icon {
+    width: 48px; height: 48px;
+    margin-bottom: 2px;
+    border: 1px solid #29404f;
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--accent); background: #10201f;
+  }
+  .empty-icon .icon { width: 21px; height: 21px; }
+  .empty-state h3 { color: #dce7ef; font-size: 17px; letter-spacing: 0; }
+  .empty-state p { color: #8197aa; font-size: 12px; }
+  .suggestions { max-width: 620px; margin-top: 3px; gap: 7px; }
+  .suggestion-btn {
+    padding: 8px 12px;
+    border-color: #2a3c4d;
+    background: #111b25;
+    color: #a6bac9;
+    border-radius: 7px;
+  }
+  .suggestion-btn:hover {
+    color: #b9f2eb; border-color: #3a6b67; background: #112522;
+  }
+  .input-area {
+    padding: 16px 24px 19px;
+    background: var(--bg);
+    border-top-color: #1b2733;
+  }
+  .input-wrapper {
+    width: min(920px, 100%); margin: 0 auto;
+    padding: 9px 10px 9px 13px;
+    border-color: #2b3c4c; border-radius: 10px;
+    background: #101820;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.2);
+  }
+  .input-wrapper:focus-within {
+    border-color: #3b756f;
+    box-shadow: 0 0 0 3px rgba(45,212,191,0.08);
+  }
+  .input-wrapper textarea { color: #e5edf3; font-size: 13px; }
+  .input-wrapper textarea::placeholder { color: #627789; }
+  .send-btn {
+    width: 34px; height: 34px; border-radius: 8px;
+    background: var(--accent); color: #06231f;
+  }
+  .send-btn:hover { background: var(--accent-hover); }
+  .send-btn:disabled { color: #607386; background: #192531; }
+  .input-hint { color: #617588; font-size: 10px; }
+  @media (max-width: 768px) {
+    .sidebar { width: min(90vw, 340px); background: #0e151d; }
+    .topbar { height: 56px; padding: 0 14px; gap: 8px; }
+    .topbar .title { font-size: 13px; }
+    .title-icon { display: none; }
+    .clear-btn { padding: 0 9px; }
+    .chat-container { padding: 22px 16px; }
+    .msg { max-width: 91%; }
+    .input-area { padding: 12px 14px 15px; }
+  }
 </style>
 </head>
 <body>
+<svg aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">
+  <symbol id="icon-menu" viewBox="0 0 24 24">
+    <path d="M4 6h16M4 12h16M4 18h16"/>
+  </symbol>
+  <symbol id="icon-database" viewBox="0 0 24 24">
+    <ellipse cx="12" cy="5" rx="8" ry="3"/>
+    <path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/>
+    <path d="M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7"/>
+  </symbol>
+  <symbol id="icon-upload" viewBox="0 0 24 24">
+    <path d="M12 16V4"/>
+    <path d="m7 9 5-5 5 5"/>
+    <path d="M20 16v4H4v-4"/>
+  </symbol>
+  <symbol id="icon-file" viewBox="0 0 24 24">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+    <path d="M14 2v6h6"/>
+    <path d="M8 13h8M8 17h6"/>
+  </symbol>
+  <symbol id="icon-search" viewBox="0 0 24 24">
+    <circle cx="11" cy="11" r="7"/>
+    <path d="m20 20-4-4"/>
+  </symbol>
+  <symbol id="icon-arrow-up" viewBox="0 0 24 24">
+    <path d="M12 19V5"/>
+    <path d="m5 12 7-7 7 7"/>
+  </symbol>
+  <symbol id="icon-refresh" viewBox="0 0 24 24">
+    <path d="M20 6v5h-5"/>
+    <path d="M4 18v-5h5"/>
+    <path d="M18.4 9A7 7 0 0 0 6.3 6.3L4 9"/>
+    <path d="M5.6 15a7 7 0 0 0 11.8 2.4L20 15"/>
+  </symbol>
+  <symbol id="icon-x" viewBox="0 0 24 24">
+    <path d="M18 6 6 18M6 6l12 12"/>
+  </symbol>
+</svg>
 <div class="app">
   <!-- 侧边栏 -->
   <div class="sidebar">
@@ -325,34 +678,63 @@
       </div>
     </div>
 
-    <div class="sidebar-section">
+    <div class="sidebar-section status-section">
       <h2>系统状态</h2>
-      <div class="status-row">
-        <span class="label">知识库</span>
-        <span id="kb-status" class="badge-err">未加载</span>
-      </div>
-      <div class="status-row">
-        <span class="label">Chunk 数</span>
-        <span id="chunk-count" class="value">0</span>
-      </div>
-      <div class="status-row">
-        <span class="label">LLM</span>
-        <span class="value">qwen2.5</span>
-      </div>
-      <div class="status-row">
-        <span class="label">Embed</span>
-        <span class="value">nomic-embed</span>
+      <div class="status-grid">
+        <div class="status-item status-item-wide">
+          <span class="label">知识库</span>
+          <span id="kb-status" class="badge-err">未加载</span>
+        </div>
+        <div class="status-item">
+          <span class="label">Chunk 数</span>
+          <span id="chunk-count" class="value">0</span>
+        </div>
+        <div class="status-item">
+          <span class="label">当前版本</span>
+          <span id="release-version" class="value">--</span>
+        </div>
+        <div class="status-item">
+          <span class="label">任务状态</span>
+          <span id="job-status" class="badge-neutral">空闲</span>
+        </div>
+        <div class="status-item">
+          <span class="label">定时对账</span>
+          <span id="reconcile-status" class="value">--</span>
+        </div>
+        <div class="status-item">
+          <span class="label">LLM</span>
+          <span class="value model-value">qwen2.5</span>
+        </div>
+        <div class="status-item">
+          <span class="label">Embed</span>
+          <span class="value model-value">nomic-embed</span>
+        </div>
       </div>
     </div>
 
     <div class="sidebar-section">
       <h2>上传文档</h2>
       <div class="upload-area" id="upload-area">
-        <div class="icon">📄</div>
-        <p>点击或拖拽文件至此</p>
-        <div class="hint">支持 PDF / Markdown / TXT / DOCX</div>
+        <div class="upload-icon">
+          <svg class="icon"><use href="#icon-upload"></use></svg>
+        </div>
+        <p>添加知识文档</p>
+        <div class="hint">PDF / Markdown / TXT / DOCX</div>
       </div>
       <input type="file" id="file-input" multiple accept=".pdf,.md,.txt,.markdown,.docx" hidden>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="section-title-row">
+        <h2>发布版本</h2>
+        <button class="rollback-btn icon-btn" id="reconcile-btn">
+          <svg class="icon"><use href="#icon-refresh"></use></svg>
+          <span>对账</span>
+        </button>
+      </div>
+      <div class="release-list" id="release-list">
+        <div style="color:var(--text-muted);font-size:12px;">暂无发布记录</div>
+      </div>
     </div>
 
     <div class="sidebar-section" style="flex:1; display:flex; flex-direction:column; overflow:hidden;">
@@ -367,22 +749,29 @@
   <!-- 主区域 -->
   <div class="main">
     <div class="topbar">
-      <button class="menu-btn" id="menu-btn" aria-label="打开文档面板" title="打开文档面板">☰</button>
-      <span class="title">💬 知识库问答</span>
+      <button class="menu-btn" id="menu-btn" aria-label="打开文档面板" title="打开文档面板">
+        <svg class="icon"><use href="#icon-menu"></use></svg>
+      </button>
+      <span class="title">
+        <svg class="icon title-icon"><use href="#icon-database"></use></svg>
+        <span>知识库问答</span>
+      </span>
       <div class="spacer"></div>
       <div class="toggle-switch">
         <span>查询改写</span>
         <div class="toggle active" id="expansion-toggle"></div>
       </div>
-      <button id="clear-btn" style="background:none;border:1px solid var(--border);color:var(--text-secondary);border-radius:6px;padding:5px 12px;font-size:12px;cursor:pointer;">清空</button>
+      <button class="clear-btn" id="clear-btn">清空</button>
     </div>
 
     <div class="chat-container" id="chat">
       <!-- 空状态 -->
       <div class="empty-state" id="empty-state">
-        <div class="icon">🔍</div>
+        <div class="empty-icon">
+          <svg class="icon"><use href="#icon-search"></use></svg>
+        </div>
         <h3>向知识库提问</h3>
-        <p>输入问题，系统将检索文档并生成带引用的回答</p>
+        <p>检索本地文档，生成可追溯引用的回答</p>
         <div class="suggestions" id="suggestions">
           <button class="suggestion-btn">这个项目用了什么技术栈？</button>
           <button class="suggestion-btn">默认端口是多少？</button>
@@ -394,7 +783,9 @@
     <div class="input-area">
       <div class="input-wrapper">
         <textarea id="input" placeholder="输入你的问题..." rows="1"></textarea>
-        <button class="send-btn" id="send-btn" disabled>→</button>
+        <button class="send-btn" id="send-btn" disabled aria-label="发送">
+          <svg class="icon"><use href="#icon-arrow-up"></use></svg>
+        </button>
       </div>
       <div class="input-hint">Enter 发送 · Shift+Enter 换行</div>
     </div>
@@ -411,9 +802,40 @@ const clearBtn = document.getElementById('clear-btn');
 const sidebar = document.querySelector('.sidebar');
 const menuBtn = document.getElementById('menu-btn');
 const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+const releaseList = document.getElementById('release-list');
+const releaseVersion = document.getElementById('release-version');
+const jobStatus = document.getElementById('job-status');
+const reconcileStatus = document.getElementById('reconcile-status');
+const reconcileBtn = document.getElementById('reconcile-btn');
 
 let useExpansion = true;
 let isSending = false;
+
+function createIcon(symbolId, className = 'icon') {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', className);
+  const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+  use.setAttribute('href', `#${symbolId}`);
+  svg.appendChild(use);
+  return svg;
+}
+
+function formatCompactNumber(value) {
+  const number = Number(value) || 0;
+  const absolute = Math.abs(number);
+  if (absolute < 1000) return String(number);
+  if (absolute < 1000000) {
+    return `${Number((number / 1000).toFixed(absolute < 100000 ? 1 : 0))}k`;
+  }
+  if (absolute < 1000000000) {
+    return `${Number((number / 1000000).toFixed(absolute < 100000000 ? 1 : 0))}m`;
+  }
+  return `${Number((number / 1000000000).toFixed(1))}b`;
+}
+
+function formatVersionLabel(value) {
+  return `v${formatCompactNumber(value)}`;
+}
 
 function setSidebarOpen(open) {
   sidebar.classList.toggle('mobile-open', open);
@@ -422,8 +844,7 @@ function setSidebarOpen(open) {
 
 // ---- 初始化 ----
 async function init() {
-  await loadStatus();
-  await loadDocuments();
+  await Promise.all([loadStatus(), loadDocuments(), loadReleases()]);
 }
 
 async function loadStatus() {
@@ -438,11 +859,51 @@ async function loadStatus() {
       badge.textContent = '未加载';
       badge.className = 'badge-err';
     }
-    document.getElementById('chunk-count').textContent = data.chunk_count;
+    const chunkCount = document.getElementById('chunk-count');
+    chunkCount.textContent = formatCompactNumber(data.chunk_count);
+    chunkCount.title = `精确数量: ${data.chunk_count}`;
+    releaseVersion.textContent = data.active_release_id
+      ? formatVersionLabel(data.active_release_id)
+      : '--';
+    releaseVersion.title = data.active_release_id
+      ? `精确版本号: ${data.active_release_id}`
+      : '';
+    const latestJob = data.latest_job;
+    if (latestJob && latestJob.state) {
+      setJobBadge(latestJob.state);
+    } else {
+      setJobBadge('IDLE');
+    }
+    const reconciliation = data.reconciliation || {};
+    const reconcileLabels = {
+      NO_ACTIVE_RELEASE: '无活动版本',
+      NO_CHANGES: '无变化',
+      QUEUED: '等待任务',
+    };
+    reconcileStatus.textContent = reconciliation.state
+      ? (reconcileLabels[reconciliation.state] || reconciliation.state)
+      : '未运行';
     sendBtn.disabled = !data.loaded;
   } catch (e) {
     console.error('status error:', e);
   }
+}
+
+function setJobBadge(state) {
+  const styles = {
+    IDLE: ['空闲', 'badge-neutral'],
+    QUEUED: ['等待', 'badge-warn'],
+    RUNNING: ['处理中', 'badge-warn'],
+    STAGING: ['构建中', 'badge-warn'],
+    ACTIVE: ['已完成', 'badge-ok'],
+    FAILED: ['失败', 'badge-err'],
+    NOOP: ['无变化', 'badge-neutral'],
+    REJECTED: ['未通过门禁', 'badge-err'],
+    ACTIVE_WITH_WARNING: ['已激活但需关注', 'badge-warn'],
+  };
+  const [label, className] = styles[state] || [state, 'badge-neutral'];
+  jobStatus.textContent = label;
+  jobStatus.className = className;
 }
 
 async function loadDocuments() {
@@ -482,7 +943,7 @@ async function loadDocuments() {
       deleteBtn.className = 'del-btn';
       deleteBtn.title = '删除';
       deleteBtn.setAttribute('aria-label', `删除 ${d.name}`);
-      deleteBtn.textContent = '✕';
+      deleteBtn.appendChild(createIcon('icon-x'));
       deleteBtn.addEventListener('click', () => deleteDoc(d.file, d.name));
 
       item.append(iconEl, nameEl, sizeEl, deleteBtn);
@@ -493,8 +954,140 @@ async function loadDocuments() {
   }
 }
 
+async function loadReleases() {
+  try {
+    const res = await fetch('/api/releases');
+    const releases = await res.json();
+    releaseList.replaceChildren();
+    if (!Array.isArray(releases) || releases.length === 0) {
+      const empty = document.createElement('div');
+      empty.style.cssText = 'color:var(--text-muted);font-size:12px;';
+      empty.textContent = '暂无发布记录';
+      releaseList.appendChild(empty);
+      return;
+    }
+
+    releases.slice(0, 8).forEach(release => {
+      const item = document.createElement('div');
+      item.className = 'release-item';
+
+      const line = document.createElement('div');
+      line.className = 'release-line';
+      const name = document.createElement('span');
+      name.className = 'release-title';
+      name.textContent = `${formatVersionLabel(release.id)} · ${formatCompactNumber(release.chunk_count)} chunks`;
+      name.title = `版本 ${release.id}，${release.chunk_count} chunks`;
+
+      if (release.state === 'ACTIVE') {
+        const badge = document.createElement('span');
+        badge.className = 'badge-ok';
+        badge.textContent = '当前';
+        line.append(name, badge);
+      } else if (release.state === 'ACTIVE_WITH_WARNING') {
+        const badge = document.createElement('span');
+        badge.className = 'badge-warn';
+        badge.textContent = '质量警告';
+        line.append(name, badge);
+      } else if (['REJECTED', 'PENDING_APPROVAL'].includes(release.state)) {
+        const badge = document.createElement('span');
+        badge.className = 'badge-err';
+        badge.textContent = '等待处理';
+        line.append(name, badge);
+      } else if (release.state === 'SUPERSEDED') {
+        const badge = document.createElement('span');
+        badge.className = 'badge-neutral';
+        badge.textContent = '历史版本';
+        line.append(name, badge);
+      } else {
+        const badge = document.createElement('span');
+        badge.className = release.state === 'FAILED' ? 'badge-err' : 'badge-neutral';
+        badge.textContent = release.state;
+        line.append(name, badge);
+      }
+
+      const meta = document.createElement('div');
+      meta.className = 'release-meta';
+      meta.textContent = `${release.state} · ${formatCompactNumber(release.documents)} docs`;
+      item.append(line, meta);
+
+      const actions = document.createElement('div');
+      actions.className = 'release-actions';
+      if (release.state === 'SUPERSEDED') {
+        const rollbackBtn = document.createElement('button');
+        rollbackBtn.className = 'rollback-btn';
+        rollbackBtn.textContent = '回滚';
+        rollbackBtn.addEventListener('click', () => rollbackRelease(release.id));
+        actions.appendChild(rollbackBtn);
+      }
+      if (actions.childElementCount > 0) item.appendChild(actions);
+      releaseList.appendChild(item);
+    });
+  } catch (e) {
+    console.error('releases error:', e);
+  }
+}
+
+async function waitForJob(jobId, timeoutMs = 180000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`);
+    const job = await res.json();
+    setJobBadge(job.state);
+    if (['ACTIVE', 'FAILED', 'NOOP', 'REJECTED'].includes(job.state)) {
+      return job;
+    }
+    await new Promise(resolve => setTimeout(resolve, 800));
+  }
+  throw new Error('任务等待超时');
+}
+
+async function rollbackRelease(releaseId) {
+  if (!confirm(`确定回滚到 v${releaseId} 吗？`)) return;
+  try {
+    const res = await fetch('/api/rollback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ release_id: releaseId }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    const job = await waitForJob(data.job.id);
+    if (job.state === 'ACTIVE') {
+      await Promise.all([loadStatus(), loadDocuments(), loadReleases()]);
+    } else {
+      alert('回滚失败: ' + (job.error || job.state));
+    }
+  } catch (e) {
+    alert('回滚请求异常: ' + e.message);
+  }
+}
+
+async function runReconciliation() {
+  reconcileBtn.disabled = true;
+  try {
+    const res = await fetch('/api/reconcile', { method: 'POST' });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    if (data.job) {
+      const job = await waitForJob(data.job.id);
+      if (job.state === 'ACTIVE') {
+        addMessage('bot', '定时对账发现外部变更并完成发布。');
+      } else if (job.state === 'REJECTED') {
+        addMessage('error', '对账产生的版本未通过质量门禁。');
+      }
+    } else {
+      addMessage('bot', '定时对账完成，没有发现外部文件变化。');
+    }
+    await Promise.all([loadStatus(), loadDocuments(), loadReleases()]);
+  } catch (e) {
+    alert('对账失败: ' + e.message);
+  } finally {
+    reconcileBtn.disabled = false;
+  }
+}
+
 async function deleteDoc(filename, displayName) {
-  if (!confirm(`确定从知识库删除 "${displayName}" 吗？此操作不可恢复。`)) return;
+  if (!confirm(`确定从知识库删除 "${displayName}" 吗？`)) return;
 
   try {
     const res = await fetch('/api/delete', {
@@ -503,10 +1096,13 @@ async function deleteDoc(filename, displayName) {
       body: JSON.stringify({ file: filename }),
     });
     const data = await res.json();
-    if (data.success) {
-      alert(`已删除 ${data.removed} 个 chunk`);
-      loadDocuments();
-      loadStatus();
+    if (data.success && data.job) {
+      const job = await waitForJob(data.job.id);
+      if (job.state === 'ACTIVE') {
+        await Promise.all([loadStatus(), loadDocuments(), loadReleases()]);
+      } else {
+        alert('删除失败: ' + (job.error || job.state));
+      }
     } else {
       alert('删除失败: ' + (data.error || '未知错误'));
     }
@@ -537,7 +1133,7 @@ function addMessage(role, text, sources) {
   if (sources && sources.length > 0) {
     const sourceBox = document.createElement('div');
     sourceBox.className = 'sources';
-    sourceBox.append('📎 来源: ');
+    sourceBox.append('来源: ');
     sources.forEach(source => {
       const tag = document.createElement('span');
       tag.className = 'source-tag';
@@ -648,6 +1244,8 @@ clearBtn.addEventListener('click', () => {
   toggleEmptyState();
 });
 
+reconcileBtn.addEventListener('click', runReconciliation);
+
 menuBtn.addEventListener('click', () => setSidebarOpen(true));
 sidebarBackdrop.addEventListener('click', () => setSidebarOpen(false));
 window.addEventListener('resize', () => {
@@ -700,7 +1298,7 @@ async function uploadFiles(files) {
     formData.append('files', f);
   }
   // 显示上传状态
-  const status = addMessage('user', `📤 上传 ${files.length} 个文件...`);
+  addMessage('user', `正在上传 ${files.length} 个文件...`);
   try {
     const res = await fetch('/api/ingest', {
       method: 'POST',
@@ -709,10 +1307,21 @@ async function uploadFiles(files) {
     const data = await res.json();
     if (data.error) {
       addMessage('error', data.error);
+    } else if (data.job) {
+      addMessage('bot', `已提交发布任务，正在处理 ${data.files.length} 个文件...`);
+      const job = await waitForJob(data.job.id);
+      if (job.state === 'ACTIVE') {
+        addMessage('bot', `发布完成: ${data.files.join(', ')}`);
+      } else if (job.state === 'NOOP') {
+        addMessage('bot', '文档内容和索引配置没有变化，已跳过发布。');
+      } else if (job.state === 'REJECTED') {
+        addMessage('error', '任务已终止，当前版本保持不变。');
+      } else {
+        addMessage('error', `发布失败: ${job.error || job.state}`);
+      }
+      await Promise.all([loadStatus(), loadDocuments(), loadReleases()]);
     } else {
-      addMessage('bot', `✅ 已索引 ${data.files.length} 个文件: ${data.files.join(', ')}`);
-      await loadStatus();
-      await loadDocuments();
+      addMessage('error', '服务没有返回发布任务。');
     }
   } catch (e) {
     addMessage('error', `上传失败: ${e.message}`);
